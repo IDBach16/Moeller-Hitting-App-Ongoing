@@ -112,7 +112,7 @@ ui <- fluidPage(
     title = "Moeller Hitting Dashboard",
     
     tabPanel("Introduction",
-             h3("Overview of Dashboard (5/5/2025)"),
+             h3("Overview of Dashboard (5/12/2025)"),
              p("Powered by AWRE data, the Moeller Hitting Analysis Dashboard offers deep insights into hitter performance.
                This advanced tool is divided into key sections, each designed to present specific data aspects clearly and intuitively.
                Users can explore detailed game summaries, analyze swing tendencies, compare performance against right- and left-handed pitchers,
@@ -254,7 +254,9 @@ ui <- fluidPage(
              ),
              mainPanel(
                h4("Against Pitchers - Season"),
-               tableOutput("usageTableW"),
+               tableOutput("usageTable"),
+               h4("Outcomes and wOBA"),
+               tableOutput("wobaTable"),
                h4("Against vs Right-Handed Pitchers"),
                tableOutput("usageRTable"),
                h4("Stats vs Right-Handed Pitchers"),
@@ -692,26 +694,56 @@ server <- function(input, output, session) {
       })
     }
   })
+  
+  ######Added 5/12
   ################## New Chart
-  # Usage vs both table
-  output$usageTableW <- renderTable({
+  # First table: usage and swing metrics
+  output$usageTable <- renderTable({
     filteredData <- BigMoe %>%
       filter(BatterTeam == input$batterTeam3 & Batter == input$batter3) %>%
-      mutate(PitchType = recode(PitchType, FastBall = "FB", BreakingBall = 'BRB', TwoSeamFastBall = '2FB', ChangeUp = 'CH'))
+      mutate(PitchType = recode(PitchType, FastBall = "FB", BreakingBall = "BRB", TwoSeamFastBall = "2FB", ChangeUp = "CH"))
+    
     filteredData %>%
       group_by(Pitch = PitchType) %>%
-      summarize(No = n(),
-                `Usage %` = round(n() / nrow(filteredData) * 100, 3),
-                `2K` = sum(Strikes == 2),
-                `2K%` = round(sum(Strikes == 2) / n() * 100, 3),
-                `Strk%` = round(sum(PitchResult %in% c("StrikeLooking", "StrikeInPlay", "Strike_Swing_Miss", "StrikeFoul"), na.rm = TRUE) / n() * 100, 3),
-                  `Whiff` = sum(PitchResult == "Strike_Swing_Miss"),
-                  `Swings` = sum(PitchResult %in% c("Strike_Swing_Miss", "StrikeFoul")),
-                  `Whiff%` = round(Whiff / Swings * 100, 3)
-                
+      summarize(
+        No = n(),
+        `Usage %` = round(n() / nrow(filteredData) * 100, 3),
+        `2K` = sum(Strikes == 2),
+        `2K%` = round(sum(Strikes == 2) / n() * 100, 3),
+        `Strk%` = round(sum(PitchResult %in% c("StrikeLooking", "StrikeInPlay", "Strike_Swing_Miss", "StrikeFoul")) / n() * 100, 3),
+        Whiff = sum(PitchResult == "Strike_Swing_Miss"),
+        Swings = sum(PitchResult %in% c("Strike_Swing_Miss", "StrikeFoul")),
+        `Whiff%` = round(ifelse(Swings > 0, Whiff / Swings * 100, NA), 3)
       )
-    
   })
+  
+  # Second table: wOBA components and wOBA
+  output$wobaTable <- renderTable({
+    filteredData <- BigMoe %>%
+      filter(BatterTeam == input$batterTeam3 & Batter == input$batter3) %>%
+      mutate(PitchType = recode(PitchType, FastBall = "FB", BreakingBall = "BRB", TwoSeamFastBall = "2FB", ChangeUp = "CH"))
+    
+    filteredData %>%
+      group_by(Pitch = PitchType) %>%
+      summarize(
+        BB = sum(AtBatResult == "BB", na.rm = TRUE),
+        HBP = sum(AtBatResult == "HBP", na.rm = TRUE),
+        `1B` = sum(AtBatResult == "1B", na.rm = TRUE),
+        `2B` = sum(AtBatResult == "2B", na.rm = TRUE),
+        `3B` = sum(AtBatResult == "3B", na.rm = TRUE),
+        HR = sum(AtBatResult == "HR", na.rm = TRUE),
+        Outs = sum(AtBatResult %in% c("FieldOut", "StrikeOut", "GroundOut", "FlyOut", "LineOut", "DoublePlay"), na.rm = TRUE),
+        wOBA = sprintf("%.3f", (
+          (0.69 * BB + 0.72 * HBP + 0.89 * `1B` + 1.27 * `2B` + 1.62 * `3B` + 2.10 * HR) /
+            (BB + HBP + `1B` + `2B` + `3B` + HR + Outs)
+        ))
+      )
+  })
+  
+  #########################################
+  ############################
+  ##########################
+  
   
   # Usage vs RHH table
   output$usageRTable <- renderTable({
